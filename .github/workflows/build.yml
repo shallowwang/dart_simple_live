@@ -49,7 +49,6 @@ jobs:
           elif [ "${{ matrix.platform }}" == "macos" ]; then
             flutter build macos --release
           elif [ "${{ matrix.platform }}" == "ios" ]; then
-            # 编译 iOS 但不签名
             flutter build ios --release --no-codesign
           fi
         shell: bash
@@ -71,7 +70,6 @@ jobs:
       - name: Archive Artifact (iOS Unsigned IPA)
         if: matrix.platform == 'ios'
         run: |
-          # 创建标准的 Payload 结构并打包成伪 ipa
           cd simple_live_app/build/ios/iphoneos/
           mkdir Payload
           cp -r *.app Payload/
@@ -102,13 +100,16 @@ jobs:
           name: Latest Automated Build
           body: |
             Latest builds for Windows, MacOS, and iOS.
-            - iOS (Unsigned): Download .ipa and use your own tool (like Sideloadly or AltStore) to sign and install.
+            - Windows: Unzip and run .exe
+            - MacOS: Unzip and move to Applications
+            - iOS (Unsigned): Download .ipa and use your own tool to sign/install.
           files: |
-            artifacts/windows-build/SimpleLive-Windows.zip
-            artifacts/macos-build/SimpleLive-MacOS.zip
-            artifacts/ios-build/SimpleLive-iOS-Unsigned.ipa
+            ./artifacts/windows-build/SimpleLive-Windows.zip
+            ./artifacts/macos-build/SimpleLive-MacOS.zip
+            ./artifacts/ios-build/SimpleLive-iOS-Unsigned.ipa
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: false
+          append_body: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
