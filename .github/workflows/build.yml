@@ -11,21 +11,19 @@ permissions:
 
 jobs:
   build:
-    name: Build and Release
+    name: Build
     strategy:
+      fail-fast: false # 即使一个平台失败，其他平台也继续
       matrix:
         include:
           - os: windows-latest
             platform: windows
-            artifact: simple_live_app/build/windows/x64/runner/Release/
             output: SimpleLive-Windows.zip
           - os: ubuntu-latest
             platform: android
-            artifact: simple_live_app/build/app/outputs/flutter-apk/app-release.apk
             output: SimpleLive-Android.apk
           - os: macos-latest
             platform: macos
-            artifact: simple_live_app/build/macos/Build/Products/Release/
             output: SimpleLive-MacOS.zip
     runs-on: ${{ matrix.os }}
     steps:
@@ -37,6 +35,16 @@ jobs:
       - name: Enable Desktop Support
         if: matrix.platform != 'android'
         run: flutter config --enable-${{ matrix.platform }}-desktop
+
+      - name: Prepare Android Signing (Dummy)
+        if: matrix.platform == 'android'
+        run: |
+          echo "storePassword=password" > simple_live_app/android/key.properties
+          echo "keyPassword=password" >> simple_live_app/android/key.properties
+          echo "keyAlias=debug" >> simple_live_app/android/key.properties
+          echo "storeFile=../debug.keystore" >> simple_live_app/android/key.properties
+          # 使用 Flutter 自带的 debug.keystore 绕过签名
+          cp ${{ env.FLUTTER_ROOT }}/packages/flutter_tools/static/debug.keystore simple_live_app/android/debug.keystore
 
       - name: Install Dependencies
         run: |
@@ -51,19 +59,22 @@ jobs:
           elif [ "${{ matrix.platform }}" == "macos" ]; then
             flutter build macos --release
           else
-            flutter build apk --release
+            # Android 使用 --no-shrink 减少出错概率，并强制打 fat apk
+            flutter build apk --release --no-shrink
           fi
         shell: bash
 
-      - name: Archive Artifact (Windows/MacOS)
-        if: matrix.platform != 'android'
+      - name: Archive Artifact (Windows)
+        if: matrix.platform == 'windows'
         run: |
-          cd simple_live_app/build/${{ matrix.platform }}/
-          if [ "${{ matrix.platform }}" == "windows" ]; then
-            cd x64/runner/Release/
-          else
-            cd Build/Products/Release/
-          fi
+          cd simple_live_app/build/windows/x64/runner/Release/
+          zip -r ../../../../../${{ matrix.output }} .
+        shell: bash
+
+      - name: Archive Artifact (MacOS)
+        if: matrix.platform == 'macos'
+        run: |
+          cd simple_live_app/build/macos/Build/Products/Release/
           zip -r ../../../../../${{ matrix.output }} .
         shell: bash
 
@@ -81,6 +92,7 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
+    if: always() # 即使 build 有部分失败也尝试发布成功的包
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -93,12 +105,13 @@ jobs:
           tag_name: latest-build
           name: Latest Automated Build
           body: |
-            This release contains the latest automated builds from the master branch.
-            - Build Date: $(date +'%Y-%m-%d %H:%M:%S')
+            This release contains the latest automated builds.
+            Note: Some platforms might be missing if their build failed.
           files: |
             ./artifacts/windows-build/SimpleLive-Windows.zip
             ./artifacts/android-build/SimpleLive-Android.apk
             ./artifacts/macos-build/SimpleLive-MacOS.zip
           prerelease: true
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
