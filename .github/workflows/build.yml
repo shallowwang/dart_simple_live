@@ -1,4 +1,4 @@
-name: Multi-Platform Build
+name: Multi-Platform Build & Release
 
 on:
   workflow_dispatch:
@@ -6,67 +6,99 @@ on:
     branches:
       - master
 
+permissions:
+  contents: write
+
 jobs:
-  build_android:
-    name: Build Android
+  build:
+    name: Build and Release
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact: simple_live_app/build/windows/x64/runner/Release/
+            output: SimpleLive-Windows.zip
+          - os: ubuntu-latest
+            platform: android
+            artifact: simple_live_app/build/app/outputs/flutter-apk/app-release.apk
+            output: SimpleLive-Android.apk
+          - os: macos-latest
+            platform: macos
+            artifact: simple_live_app/build/macos/Build/Products/Release/
+            output: SimpleLive-MacOS.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      
+      - name: Enable Desktop Support
+        if: matrix.platform != 'android'
+        run: flutter config --enable-${{ matrix.platform }}-desktop
+
+      - name: Install Dependencies
+        run: |
+          cd simple_live_core && flutter pub get
+          cd ../simple_live_app && flutter pub get
+
+      - name: Build App
+        run: |
+          cd simple_live_app
+          if [ "${{ matrix.platform }}" == "windows" ]; then
+            flutter build windows --release
+          elif [ "${{ matrix.platform }}" == "macos" ]; then
+            flutter build macos --release
+          else
+            flutter build apk --release
+          fi
+        shell: bash
+
+      - name: Archive Artifact (Windows/MacOS)
+        if: matrix.platform != 'android'
+        run: |
+          cd simple_live_app/build/${{ matrix.platform }}/
+          if [ "${{ matrix.platform }}" == "windows" ]; then
+            cd x64/runner/Release/
+          else
+            cd Build/Products/Release/
+          fi
+          zip -r ../../../../../${{ matrix.output }} .
+        shell: bash
+
+      - name: Prepare APK
+        if: matrix.platform == 'android'
+        run: cp simple_live_app/build/app/outputs/flutter-apk/app-release.apk ${{ matrix.output }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-build
+          path: ${{ matrix.output }}
+
+  release:
+    name: Create Release
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          channel: 'stable'
-      - name: Install Dependencies
-        run: |
-          cd simple_live_core && flutter pub get
-          cd ../simple_live_app && flutter pub get
-      - name: Build APK
-        run: cd simple_live_app && flutter build apk --release
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SimpleLive-Android
-          path: simple_live_app/build/app/outputs/flutter-apk/app-release.apk
+          path: ./artifacts
 
-  build_windows:
-    name: Build Windows
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          channel: 'stable'
-      - name: Enable Windows Desktop
-        run: flutter config --enable-windows-desktop
-      - name: Install Dependencies
-        run: |
-          cd simple_live_core; flutter pub get
-          cd ../simple_live_app; flutter pub get
-      - name: Build Windows
-        run: cd simple_live_app; flutter build windows --release
-      - name: Upload Windows
-        uses: actions/upload-artifact@v4
-        with:
-          name: SimpleLive-Windows
-          path: simple_live_app/build/windows/x64/runner/Release/
-
-  build_macos:
-    name: Build MacOS
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-      - name: Enable MacOS Desktop
-        run: flutter config --enable-macos-desktop
-      - name: Install Dependencies
-        run: |
-          cd simple_live_core && flutter pub get
-          cd ../simple_live_app && flutter pub get
-      - name: Build MacOS
-        run: cd simple_live_app && flutter build macos --release
-      - name: Upload MacOS
-        uses: actions/upload-artifact@v4
-        with:
-          name: SimpleLive-MacOS
-          path: simple_live_app/build/macos/Build/Products/Release/
+          tag_name: latest-build
+          name: Latest Automated Build
+          body: |
+            This release contains the latest automated builds from the master branch.
+            - Build Date: $(date +'%Y-%m-%d %H:%M:%S')
+          files: |
+            ./artifacts/windows-build/SimpleLive-Windows.zip
+            ./artifacts/android-build/SimpleLive-Android.apk
+            ./artifacts/macos-build/SimpleLive-MacOS.zip
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
