@@ -53,8 +53,9 @@ jobs:
       - name: Archive Artifact (MacOS)
         if: matrix.platform == 'macos'
         run: |
+          # 使用 ditto 创建压缩包以保留 MacOS 权限和符号链接
           cd simple_live_app/build/macos/Build/Products/Release/
-          zip -r ../../../../../${{ matrix.output }} .
+          ditto -c -k --sequesterRsrc --keepParent *.app ../../../../../${{ matrix.output }}
         shell: bash
 
       - name: Upload Artifact
@@ -74,20 +75,18 @@ jobs:
         with:
           path: ./artifacts
 
-      - name: List Artifacts (Debug)
-        run: |
-          echo "Listing all downloaded artifacts:"
-          ls -R ./artifacts
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-build
           name: Latest Automated Build
           body: |
-            This release contains the latest automated builds for Windows and MacOS.
+            Latest desktop builds for Windows and MacOS.
+            - Windows: Unzip and run .exe
+            - MacOS: Unzip and move to Applications
           files: |
-            artifacts/**/*-build/*.zip
+            ./artifacts/windows-build/SimpleLive-Windows.zip
+            ./artifacts/macos-build/SimpleLive-MacOS.zip
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: false
