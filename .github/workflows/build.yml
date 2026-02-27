@@ -24,7 +24,7 @@ jobs:
             output: SimpleLive-MacOS.zip
           - os: macos-latest
             platform: ios
-            output: SimpleLive-iOS-Unsigned.zip
+            output: SimpleLive-iOS-Unsigned.ipa
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
           elif [ "${{ matrix.platform }}" == "macos" ]; then
             flutter build macos --release
           elif [ "${{ matrix.platform }}" == "ios" ]; then
-            # 编译 iOS 但不进行代码签名
+            # 编译 iOS 但不签名
             flutter build ios --release --no-codesign
           fi
         shell: bash
@@ -68,12 +68,14 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent *.app ${{ github.workspace }}/${{ matrix.output }}
         shell: bash
 
-      - name: Archive Artifact (iOS Unsigned)
+      - name: Archive Artifact (iOS Unsigned IPA)
         if: matrix.platform == 'ios'
         run: |
-          # 将编译好的 .app 文件夹打成 zip，方便用户下载后手动签名
+          # 创建标准的 Payload 结构并打包成伪 ipa
           cd simple_live_app/build/ios/iphoneos/
-          zip -r ${{ github.workspace }}/${{ matrix.output }} *.app
+          mkdir Payload
+          cp -r *.app Payload/
+          zip -r ${{ github.workspace }}/${{ matrix.output }} Payload/
         shell: bash
 
       - name: Upload Artifact
@@ -99,14 +101,12 @@ jobs:
           tag_name: latest-build
           name: Latest Automated Build
           body: |
-            Latest desktop and mobile builds.
-            - Windows: Unzip and run .exe
-            - MacOS: Unzip and move to Applications
-            - iOS (Unsigned): Download .zip, extract .app, and use your own tool to sign/install.
+            Latest builds for Windows, MacOS, and iOS.
+            - iOS (Unsigned): Download .ipa and use your own tool (like Sideloadly or AltStore) to sign and install.
           files: |
             artifacts/windows-build/SimpleLive-Windows.zip
             artifacts/macos-build/SimpleLive-MacOS.zip
-            artifacts/ios-build/SimpleLive-iOS-Unsigned.zip
+            artifacts/ios-build/SimpleLive-iOS-Unsigned.ipa
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: false
