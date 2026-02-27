@@ -1,0 +1,72 @@
+name: Multi-Platform Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  build_android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      - name: Install Dependencies
+        run: |
+          cd simple_live_core && flutter pub get
+          cd ../simple_live_app && flutter pub get
+      - name: Build APK
+        run: cd simple_live_app && flutter build apk --release
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimpleLive-Android
+          path: simple_live_app/build/app/outputs/flutter-apk/app-release.apk
+
+  build_windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+      - name: Install Dependencies
+        run: |
+          cd simple_live_core; flutter pub get
+          cd ../simple_live_app; flutter pub get
+      - name: Build Windows
+        run: cd simple_live_app; flutter build windows --release
+      - name: Upload Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimpleLive-Windows
+          path: simple_live_app/build/windows/x64/runner/Release/
+
+  build_macos:
+    name: Build MacOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      - name: Enable MacOS Desktop
+        run: flutter config --enable-macos-desktop
+      - name: Install Dependencies
+        run: |
+          cd simple_live_core && flutter pub get
+          cd ../simple_live_app && flutter pub get
+      - name: Build MacOS
+        run: cd simple_live_app && flutter build macos --release
+      - name: Upload MacOS
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimpleLive-MacOS
+          path: simple_live_app/build/macos/Build/Products/Release/
