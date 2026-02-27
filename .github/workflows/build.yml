@@ -24,7 +24,7 @@ jobs:
             output: SimpleLive-MacOS.zip
           - os: macos-latest
             platform: ios
-            output: SimpleLive-iOS.ipa
+            output: SimpleLive-iOS-Unsigned.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -41,22 +41,6 @@ jobs:
           cd simple_live_core && flutter pub get
           cd ../simple_live_app && flutter pub get
 
-      - name: Setup iOS Certificates
-        if: matrix.platform == 'ios'
-        run: |
-          # 导入 P12 证书
-          echo "${{ secrets.P12_CERTIFICATE }}" | base64 --decode > certificate.p12
-          security create-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
-          security import certificate.p12 -k build.keychain -P "${{ secrets.P12_PASSWORD }}" -A -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
-          
-          # 导入描述文件
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
-        shell: bash
-
       - name: Build App
         run: |
           cd simple_live_app
@@ -65,7 +49,8 @@ jobs:
           elif [ "${{ matrix.platform }}" == "macos" ]; then
             flutter build macos --release
           elif [ "${{ matrix.platform }}" == "ios" ]; then
-            flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+            # 编译 iOS 但不进行代码签名
+            flutter build ios --release --no-codesign
           fi
         shell: bash
 
@@ -83,10 +68,12 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent *.app ${{ github.workspace }}/${{ matrix.output }}
         shell: bash
 
-      - name: Prepare IPA
+      - name: Archive Artifact (iOS Unsigned)
         if: matrix.platform == 'ios'
         run: |
-          cp simple_live_app/build/ios/ipa/*.ipa ${{ github.workspace }}/${{ matrix.output }}
+          # 将编译好的 .app 文件夹打成 zip，方便用户下载后手动签名
+          cd simple_live_app/build/ios/iphoneos/
+          zip -r ${{ github.workspace }}/${{ matrix.output }} *.app
         shell: bash
 
       - name: Upload Artifact
@@ -112,11 +99,14 @@ jobs:
           tag_name: latest-build
           name: Latest Automated Build
           body: |
-            Latest builds for Windows, MacOS, and iOS.
+            Latest desktop and mobile builds.
+            - Windows: Unzip and run .exe
+            - MacOS: Unzip and move to Applications
+            - iOS (Unsigned): Download .zip, extract .app, and use your own tool to sign/install.
           files: |
             artifacts/windows-build/SimpleLive-Windows.zip
             artifacts/macos-build/SimpleLive-MacOS.zip
-            artifacts/ios-build/SimpleLive-iOS.ipa
+            artifacts/ios-build/SimpleLive-iOS-Unsigned.zip
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: false
