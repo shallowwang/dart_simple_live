@@ -13,7 +13,7 @@ jobs:
   build:
     name: Build
     strategy:
-      fail-fast: false # 即使一个平台失败，其他平台也继续
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -36,15 +36,16 @@ jobs:
         if: matrix.platform != 'android'
         run: flutter config --enable-${{ matrix.platform }}-desktop
 
-      - name: Prepare Android Signing (Dummy)
+      - name: Patch Android Build for Release
         if: matrix.platform == 'android'
         run: |
-          echo "storePassword=password" > simple_live_app/android/key.properties
-          echo "keyPassword=password" >> simple_live_app/android/key.properties
-          echo "keyAlias=debug" >> simple_live_app/android/key.properties
-          echo "storeFile=../debug.keystore" >> simple_live_app/android/key.properties
-          # 使用 Flutter 自带的 debug.keystore 绕过签名
-          cp ${{ env.FLUTTER_ROOT }}/packages/flutter_tools/static/debug.keystore simple_live_app/android/debug.keystore
+          # 强行删除原来的 signingConfigs 逻辑，改用 debug 签名来跑 release build
+          # 这样就不需要 key.properties 了
+          sed -i 's/signingConfig = signingConfigs.getByName("release")/signingConfig = signingConfigs.getByName("debug")/g' simple_live_app/android/app/build.gradle.kts
+          
+          # 创建一个空的 key.properties 防止代码里那个 FileInputStream 报错（虽然现在不关键了）
+          touch simple_live_app/android/key.properties
+        shell: bash
 
       - name: Install Dependencies
         run: |
@@ -59,7 +60,7 @@ jobs:
           elif [ "${{ matrix.platform }}" == "macos" ]; then
             flutter build macos --release
           else
-            # Android 使用 --no-shrink 减少出错概率，并强制打 fat apk
+            # 使用 debug 签名构建 release apk
             flutter build apk --release --no-shrink
           fi
         shell: bash
@@ -92,7 +93,7 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
-    if: always() # 即使 build 有部分失败也尝试发布成功的包
+    if: always()
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -106,7 +107,7 @@ jobs:
           name: Latest Automated Build
           body: |
             This release contains the latest automated builds.
-            Note: Some platforms might be missing if their build failed.
+            Note: Android version is signed with debug key.
           files: |
             ./artifacts/windows-build/SimpleLive-Windows.zip
             ./artifacts/android-build/SimpleLive-Android.apk
