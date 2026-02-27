@@ -47,7 +47,7 @@ jobs:
         if: matrix.platform == 'windows'
         run: |
           cd simple_live_app/build/windows/x64/runner/Release/
-          powershell Compress-Archive -Path * -DestinationPath ../../../../../${{ matrix.output }} -Force
+          powershell "Compress-Archive -Path ./* -DestinationPath ../../../../../${{ matrix.output }} -Force"
         shell: bash
 
       - name: Archive Artifact (MacOS)
@@ -75,7 +75,9 @@ jobs:
           path: ./artifacts
 
       - name: List Artifacts (Debug)
-        run: ls -R ./artifacts
+        run: |
+          echo "Listing all downloaded artifacts:"
+          ls -R ./artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -84,12 +86,10 @@ jobs:
           name: Latest Automated Build
           body: |
             This release contains the latest automated builds for Windows and MacOS.
-            Android build has been removed from this workflow.
           files: |
-            ./artifacts/windows-build/SimpleLive-Windows.zip
-            ./artifacts/macos-build/SimpleLive-MacOS.zip
+            artifacts/**/*-build/*.zip
           prerelease: true
           generate_release_notes: true
-          fail_on_unmatched_files: false # 防止因为某个包没打出来导致整个发布挂掉
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
