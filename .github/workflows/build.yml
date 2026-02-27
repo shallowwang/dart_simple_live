@@ -1,4 +1,4 @@
-name: Desktop Build & Release
+name: Full-Platform Build & Release
 
 on:
   workflow_dispatch:
@@ -22,6 +22,9 @@ jobs:
           - os: macos-latest
             platform: macos
             output: SimpleLive-MacOS.zip
+          - os: macos-latest
+            platform: ios
+            output: SimpleLive-iOS.ipa
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +33,7 @@ jobs:
           channel: 'stable'
       
       - name: Enable Desktop Support
+        if: matrix.platform != 'ios'
         run: flutter config --enable-${{ matrix.platform }}-desktop
 
       - name: Install Dependencies
@@ -37,10 +41,32 @@ jobs:
           cd simple_live_core && flutter pub get
           cd ../simple_live_app && flutter pub get
 
+      - name: Setup iOS Certificates
+        if: matrix.platform == 'ios'
+        run: |
+          # 导入 P12 证书
+          echo "${{ secrets.P12_CERTIFICATE }}" | base64 --decode > certificate.p12
+          security create-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
+          security import certificate.p12 -k build.keychain -P "${{ secrets.P12_PASSWORD }}" -A -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
+          
+          # 导入描述文件
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+        shell: bash
+
       - name: Build App
         run: |
           cd simple_live_app
-          flutter build ${{ matrix.platform }} --release
+          if [ "${{ matrix.platform }}" == "windows" ]; then
+            flutter build windows --release
+          elif [ "${{ matrix.platform }}" == "macos" ]; then
+            flutter build macos --release
+          elif [ "${{ matrix.platform }}" == "ios" ]; then
+            flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+          fi
         shell: bash
 
       - name: Archive Artifact (Windows)
@@ -55,6 +81,12 @@ jobs:
         run: |
           cd simple_live_app/build/macos/Build/Products/Release/
           ditto -c -k --sequesterRsrc --keepParent *.app ${{ github.workspace }}/${{ matrix.output }}
+        shell: bash
+
+      - name: Prepare IPA
+        if: matrix.platform == 'ios'
+        run: |
+          cp simple_live_app/build/ios/ipa/*.ipa ${{ github.workspace }}/${{ matrix.output }}
         shell: bash
 
       - name: Upload Artifact
@@ -74,21 +106,17 @@ jobs:
         with:
           path: ./artifacts
 
-      - name: List Artifacts (Debug)
-        run: ls -R ./artifacts
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-build
           name: Latest Automated Build
           body: |
-            Latest desktop builds for Windows and MacOS.
-            - Windows: Unzip and run .exe
-            - MacOS: Unzip and move to Applications
+            Latest builds for Windows, MacOS, and iOS.
           files: |
-            ./artifacts/windows-build/SimpleLive-Windows.zip
-            ./artifacts/macos-build/SimpleLive-MacOS.zip
+            artifacts/windows-build/SimpleLive-Windows.zip
+            artifacts/macos-build/SimpleLive-MacOS.zip
+            artifacts/ios-build/SimpleLive-iOS.ipa
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: false
