@@ -74,6 +74,9 @@ jobs:
         with:
           path: ./artifacts
 
+      - name: List Artifacts (Debug)
+        run: ls -R ./artifacts
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -87,5 +90,6 @@ jobs:
             ./artifacts/macos-build/SimpleLive-MacOS.zip
           prerelease: true
           generate_release_notes: true
+          fail_on_unmatched_files: false # 防止因为某个包没打出来导致整个发布挂掉
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
