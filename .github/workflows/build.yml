@@ -1,4 +1,4 @@
-name: Multi-Platform Build & Release
+name: Desktop Build & Release
 
 on:
   workflow_dispatch:
@@ -19,9 +19,6 @@ jobs:
           - os: windows-latest
             platform: windows
             output: SimpleLive-Windows.zip
-          - os: ubuntu-latest
-            platform: android
-            output: SimpleLive-Android.apk
           - os: macos-latest
             platform: macos
             output: SimpleLive-MacOS.zip
@@ -33,19 +30,7 @@ jobs:
           channel: 'stable'
       
       - name: Enable Desktop Support
-        if: matrix.platform != 'android'
         run: flutter config --enable-${{ matrix.platform }}-desktop
-
-      - name: Patch Android Build for Release
-        if: matrix.platform == 'android'
-        run: |
-          # 强行删除原来的 signingConfigs 逻辑，改用 debug 签名来跑 release build
-          # 这样就不需要 key.properties 了
-          sed -i 's/signingConfig = signingConfigs.getByName("release")/signingConfig = signingConfigs.getByName("debug")/g' simple_live_app/android/app/build.gradle.kts
-          
-          # 创建一个空的 key.properties 防止代码里那个 FileInputStream 报错（虽然现在不关键了）
-          touch simple_live_app/android/key.properties
-        shell: bash
 
       - name: Install Dependencies
         run: |
@@ -55,21 +40,14 @@ jobs:
       - name: Build App
         run: |
           cd simple_live_app
-          if [ "${{ matrix.platform }}" == "windows" ]; then
-            flutter build windows --release
-          elif [ "${{ matrix.platform }}" == "macos" ]; then
-            flutter build macos --release
-          else
-            # 使用 debug 签名构建 release apk
-            flutter build apk --release --no-shrink
-          fi
+          flutter build ${{ matrix.platform }} --release
         shell: bash
 
       - name: Archive Artifact (Windows)
         if: matrix.platform == 'windows'
         run: |
           cd simple_live_app/build/windows/x64/runner/Release/
-          zip -r ../../../../../${{ matrix.output }} .
+          powershell Compress-Archive -Path * -DestinationPath ../../../../../${{ matrix.output }} -Force
         shell: bash
 
       - name: Archive Artifact (MacOS)
@@ -78,10 +56,6 @@ jobs:
           cd simple_live_app/build/macos/Build/Products/Release/
           zip -r ../../../../../${{ matrix.output }} .
         shell: bash
-
-      - name: Prepare APK
-        if: matrix.platform == 'android'
-        run: cp simple_live_app/build/app/outputs/flutter-apk/app-release.apk ${{ matrix.output }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -106,11 +80,10 @@ jobs:
           tag_name: latest-build
           name: Latest Automated Build
           body: |
-            This release contains the latest automated builds.
-            Note: Android version is signed with debug key.
+            This release contains the latest automated builds for Windows and MacOS.
+            Android build has been removed from this workflow.
           files: |
             ./artifacts/windows-build/SimpleLive-Windows.zip
-            ./artifacts/android-build/SimpleLive-Android.apk
             ./artifacts/macos-build/SimpleLive-MacOS.zip
           prerelease: true
           generate_release_notes: true
