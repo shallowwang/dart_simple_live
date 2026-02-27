@@ -1,0 +1,37 @@
+name: Build Windows App
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Enable Windows Desktop Support
+        run: flutter config --enable-windows-desktop
+
+      - name: Get Dependencies (Core)
+        working-directory: ./simple_live_core
+        run: flutter pub get
+
+      - name: Get Dependencies (App)
+        working-directory: ./simple_live_app
+        run: flutter pub get
+
+      - name: Build Windows
+        working-directory: ./simple_live_app
+        run: flutter build windows --release
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Simple-Live-Windows
+          path: simple_live_app/build/windows/x64/runner/Release/
